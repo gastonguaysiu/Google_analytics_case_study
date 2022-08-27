@@ -1,0 +1,103 @@
+---
+title: "capstone_google"
+author: "gaston"
+date: "8/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Ask
+
+1. Identify the business task:
+How do annual members and casual riders use Cyclistic bikes differently?
+Context: Annual members are much more profitable than casual riders. We are aiming to convert casual riders into members. 
+
+2. Consider key stakeholders
+* Lily Moreno: The director of marketing and your manager. Moreno is responsible for the development of campaigns and initiatives to promote the bike-share program. These may include email, social media, and other channels.
+* Cyclistic executive team: The notoriously detail-oriented executive team will decide whether to approve the recommended marketing program.
+* Cyclistic marketing analytics team: A team of data analysts who are responsible for collecting, analyzing, and reporting data that helps guide Cyclistic marketing strategy.
+
+## Prepare
+
+The Cyclistic bike share data for Aug 2021 to July 2022 was downloaded from <https://divvy-tripdata.s3.amazonaws.com/index.html>. The data was in a repository of files going back a couple years, organized by month, and then by quarters before 2015. My data was in the form of 12 zip files, which were decompressed before processing.
+
+## Process
+
+I was working with a chromebook, with a limited disk space and computing power, so my analysis needed to be computationally light. I used a combination of bash scripting and sqlite3 on a linux virtual machine to process my raw data, my data visualization where made in Tableau then inserted into an Rmarkdown. 
+
+After loading the data from 202108-divvy-tripdata.csv we count 804352 lines. I cleaned the data to remove all rides that were less than a second leaving us with 804145 lines, and then created a new csv file. There is no null start time or end times. I also decided to remove the columns that had information about the stations due to limited computing power and that I probably will not be using that data in my analysis. Normally I do not recommend having all the column names on a single line, but if you are doing a copy past the head/title of the file it might be a useful way to minimize typos.
+
+sqlite3$ create table bike2 as  
+$ select ride_id,rideable_type,started_at,ended_at,member_casual  
+$ from bike  
+$ where (julianday(ended_at) - julianday(started_at))*86400 > 1;  
+  
+$.ouput 22aug.csv  
+$select * from bike2;
+
+
+After the first few files, I concatenated the rest before loading it in using some bash scripting:
+
+bash$ cat 2*.csv > combo.csv
+
+And now my file is too large to add the weekday integer without crashing my virtual machine so I guess I’m splitting my file into 5 smaller files. I counted the rows in my file and then split it evenly in five; one file containing 5 899 630 rows transformed into 5 files each containing 1179926 rows:
+
+bash$ split -d -l 1179926 combo2.csv combo3
+
+And while going through the process I somehow lost my header. No worries, I found a script line that allowed me to get some new titles or restore my old ones. This shell script/line will insert a new row at the top of my file. Let’s just insert the values as my old titles:
+
+bash$ sed -i -e '1i ride_id,rideable_type,started_at,ended_at,member_casual' /home/gastonsiu/google/combo30*.csv
+
+Now some integers to denote the days of the week in a very similar process to my first edits. While I have sqlite3 open I also want to build a new table that summarizes my results. A summary table is need to not overload my data viz software.
+
+sqlite3$ create table bike2 as  
+$ select *  
+$ , strftime('%w', started_at) as weekday  
+$ , (julianday(ended_at) - julianday(started_at))*1440 as ride_tmin  
+$ from bike;
+
+sqlite3$ create table bike3 as  
+$ select weekday  
+$,rideable_type  
+$,member_casual  
+$,count(ride_id) as num  
+$,(sum(ride_tmin)/60 as tot  
+$ from bike2  
+$ group by weekday  
+$,rideable_type  
+$,member_casual;
+
+$.ouput sum.csv  
+$select * from bike3;
+
+Finally to create my visualizations, I uploaded my summary csv to Tableau, built some figures. If I noticed some trend or something worth mentioning I included them in this report.
+
+
+## Analysis/Share
+
+![](/home/gastonsiu/google/viz/sheet1.png)
+
+![](/home/gastonsiu/google/viz/sheet2.png)
+
+By looking at the figures some behavior becomes more noticeable. Members tend to favor classic bikes and are more consistent with shorter journeys. Where as casual riders tend to take longer journeys and prefer e-bikes.
+
+![](/home/gastonsiu/google/viz/sheet4.png)
+
+Looking at the bar graph above we notice that the amount the members ride is relatively consistent over the week, and that their journey time also remains consistent.
+
+![](/home/gastonsiu/google/viz/sheet3.png)
+Now bar graph paints a completely different picture of the behavior of casual riders. We notice a spike in activity during the weekend with a proportionate increase in total riding time. 
+
+## Discussion/Recommendations
+
+Based on the analysis we get a outline of the persona that members try try to make for themselves. They are prefer to display their fitness over being pragmatic and riding an e-bike. They do not favor riding during the weekend, which would suggest they they are not recreationally riding they bikes either, and may even suggest theat they have alternative modes of transportation such as cars. When we compare this to their casual counter part, we find the casual rider prefer riding e-bikes which require less effort and ride more during the weekend. I would recommend against trying to convert casual riders into annual members as both display behavior, as well as a different mindset. Instead I would cater to two different demographics.
+
+* To increase the number of annual members, I would focus add campaigns that emphasis fitness and status. The lack of riding during the weekends, and favoring of classical bike suggest that members already have a decent amount of money. Given this information I would try to market an age group between 30 to 50.
+* For our casual riders, I would create new pass-types that includes a single weekends-pass, and an annual weekend-pass, and a one week pass, this might incentive casual riders to spend more, and it will give us more data to work with. In addition to this, I would start a new market campaign directed at recreational use of the bikes to a younger demographic, or the demographic that travels.
+
+## limitations
+
+One possibility is that the increase in casual rider activity during the weekend is from people coming back from the bar late at night. Another possibility is tourist that want to travel and explore during the weekend. Unfortunately, more time is needed to process/analyze the data about the casual rider behavior so that we can start to paint a better picture of who we trying to sell our product to. But this report will do for now.
